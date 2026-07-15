@@ -16,7 +16,7 @@ import os
 
 import numpy as np
 import joblib
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -57,14 +57,19 @@ def build_dataset(data_dirs):
 
 
 def make_model():
-    # core model: gradient boosting handles nonlinear prosody interactions on ~500 samples
-    return make_pipeline(
+    """Soft-voting ensemble: regularized linear model (carries the
+    declination-to-floor / rhythm signal linearly and generalizes on ~500
+    samples) + a bagged shallow gradient booster (nonlinear interactions,
+    seed-averaged to kill single-seed variance). Chosen over a single
+    HistGB, which memorized the training set (in-sample AUC 1.0) yet lost
+    on out-of-fold AUC."""
+    lin = make_pipeline(
         StandardScaler(),
-        HistGradientBoostingClassifier(
-            max_depth=3, learning_rate=0.08, max_iter=300,
-            l2_regularization=1.0, min_samples_leaf=15,
-            early_stopping=False, random_state=0),
-    )
+        LogisticRegression(C=0.3, max_iter=2000, class_weight="balanced"))
+    gbms = [(f"gbm{s}", GradientBoostingClassifier(
+                n_estimators=150, max_depth=2, learning_rate=0.05,
+                subsample=0.8, random_state=s)) for s in range(3)]
+    return VotingClassifier(estimators=[("lr", lin)] + gbms, voting="soft")
 
 
 def oof_score_per_language(oof_p, y, langs, keys, dir_of, tmpdir):
