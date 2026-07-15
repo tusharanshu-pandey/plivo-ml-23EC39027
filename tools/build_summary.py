@@ -7,21 +7,27 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GroupKFold
 from sklearn.metrics import roc_auc_score
 from sklearn.base import clone
-from train import build_dataset, make_model, DEFAULT_DIRS
+from train import build_dataset, make_model, random_group_folds, DEFAULT_DIRS
 from eot_features import FEATURE_NAMES
 import score as scorer
 
 X, y, groups, langs, keys, dir_of = build_dataset(DEFAULT_DIRS)
 langs = np.array(langs)
 
-# OOF probabilities (the honest estimate)
-oof = np.zeros(len(y))
-for tr, te in GroupKFold(5).split(X, y, groups):
-    m = clone(make_model()); m.fit(X[tr], y[tr]); oof[te] = m.predict_proba(X[te])[:, 1]
-auc = roc_auc_score(y, oof)
+# OOF probabilities over repeated fold seeds (single-split delay noise is
+# ±30-45 ms on 100 turns/lang — see RUNLOG Run 7; we report mean ± std)
+SEEDS = 5
+oofs = []
+for s in range(SEEDS):
+    o = np.zeros(len(y))
+    for tr, te in random_group_folds(groups, s):
+        m = clone(make_model()); m.fit(X[tr], y[tr]); o[te] = m.predict_proba(X[te])[:, 1]
+    oofs.append(o)
+oof = oofs[0]                                   # seed-0 OOF for the distribution plot
+auc_seeds = [roc_auc_score(y, o) for o in oofs]
+auc, auc_sd = float(np.mean(auc_seeds)), float(np.std(auc_seeds))
 
 def delay_for(pred, d):
     idx = [i for i in range(len(dir_of)) if dir_of[i] == d]
@@ -34,7 +40,8 @@ ones = np.ones(len(y))
 res = {}
 for d in DEFAULT_DIRS:
     lang = os.path.basename(d.rstrip("/"))
-    res[lang] = {"model": delay_for(oof, d)["latency"] * 1000,
+    vals = [delay_for(o, d)["latency"] * 1000 for o in oofs]
+    res[lang] = {"model": float(np.mean(vals)), "model_sd": float(np.std(vals)),
                  "base": delay_for(ones, d)["latency"] * 1000}
 
 # LR standardized coefficients (interpretability)
@@ -110,13 +117,16 @@ code{{background:#f0f0f0;padding:1px 5px;border-radius:3px}} .star{{color:#2a9d8
 
 <h2>Result</h2>
 <p>For every pause in a user turn we output <code>p_eot</code> from <b>causal</b> prosodic features
-(audio strictly before the pause). Honest grouped-by-turn out-of-fold, overall AUC <b>{auc:.3f}</b>:</p>
+(audio strictly before the pause). Honest grouped-by-turn out-of-fold, averaged over {SEEDS} random
+fold assignments (single-split numbers proved untrustworthy — see "Evaluation noise" below), overall
+AUC <b>{auc:.3f} &plusmn; {auc_sd:.3f}</b>:</p>
 <table><tr><th></th><th>English</th><th>Hindi</th></tr>
 <tr><td>Silence-only baseline</td><td>{res['english']['base']:.0f} ms</td><td>{res['hindi']['base']:.0f} ms</td></tr>
-<tr><td>This model</td><td class="win">{res['english']['model']:.0f} ms</td><td>{res['hindi']['model']:.0f} ms</td></tr></table>
+<tr><td>This model</td><td class="win">{res['english']['model']:.0f} &plusmn; {res['english']['model_sd']:.0f} ms</td><td>{res['hindi']['model']:.0f} &plusmn; {res['hindi']['model_sd']:.0f} ms</td></tr></table>
 <div class="card">{svg_delays()}</div>
-<p>Metric = mean response delay at &le;5% interrupted turns (lower is better). <b>English improves ~24%.</b>
-Hindi sits at its acoustic ceiling — see below.</p>
+<p>Metric = mean response delay at &le;5% interrupted turns (lower is better). <b>English improves
+~23%</b>; Hindi is statistically level with the (already strong) silence baseline — at the ceiling of
+the <i>current features</i>, not of the data (see below).</p>
 
 <h2>Approach</h2>
 <p>A soft-voting ensemble — a regularized <b>LogisticRegression</b> + a bagged shallow
@@ -146,11 +156,31 @@ that end <i>flat</i> (no pitch fall); "abruptness" appeared in both classes. Add
 <li><b>Listened to the worst Hindi errors (native speaker)</b> &rarr; ends <b>fade out</b>
 (<i>"shukriya", "karlunga"</i>), dangerous holds <b>cut abruptly</b> mid-dictation
 (<i>"panch&hellip; likh lijiye"</i>); one "hold" was a silent click scored 0.88. Added fade-vs-cut +
-a silence guard &rarr; English 1232&rarr;1209 ms.</li>
-<li><b>Hindi ceiling confirmed</b>: verb-final Hindi ends on a short auxiliary whose identity is
-<i>lexical</i>, plus genuine label noise (holds a native speaker hears as finished). Acoustics + the
-&le;5% budget cannot go below 850 ms here.</li>
+a silence guard (single-split English 1232&rarr;1209 ms — later shown to be within evaluation noise).</li>
+<li><b>Hindi limit diagnosed</b>: verb-final Hindi ends on a short auxiliary whose identity is
+<i>lexical</i>, plus genuine label noise (holds a native speaker hears as finished). With the current
+features the &le;5% budget blocks anything below the baseline delay.</li>
+<li><b>Robustness guard</b>: pauses with &lt; 0.2 s of history got a zero feature vector that the
+model scored <b>0.63</b> (fires at any threshold). 0/496 dev pauses hit this, but the hidden set
+might — <code>predict.py</code> now emits a safe 0.02 for them.</li>
+<li><b>Evaluation noise measured</b>: repeating the grouped CV over 5 random fold assignments showed
+&plusmn;30&ndash;45 ms delay noise — larger than most logged deltas. Two plausible "wins"
+(duration-weighted hold samples; causal pause-history features) <b>failed replication</b> and were
+rejected. All headline numbers are now mean &plusmn; std across seeds.</li>
 </ol>
+
+<h2>Evaluation noise &amp; where the metric actually lives</h2>
+<div class="card">
+<b>Single-split numbers lie at this sample size.</b> The previously reported EN 1209 / HI 850 came from
+one fortunate fold assignment; across 5 assignments the honest estimate is
+EN {res['english']['model']:.0f} &plusmn; {res['english']['model_sd']:.0f} ms,
+HI {res['hindi']['model']:.0f} &plusmn; {res['hindi']['model_sd']:.0f} ms.<br><br>
+<b>Hindi's operating point is the silence baseline's policy</b>: the scorer picks threshold 0.05
+(every pause fires) with a 0.85 s delay set purely by the handful of holds longer than 0.85 s —
+despite Hindi AUC &asymp; 0.71, the ranking isn't yet usable there. The path to beating it is
+separating true ends from only the <i>long</i> (&gt;0.5 s) holds: 83% of Hindi holds are shorter than
+0.5 s and can never cause a false cutoff at that delay. On English the mean is dominated by the 54%
+of true ends that miss the threshold and pay the full 1.6 s timeout.</div>
 
 <h2>Human vs coding agent (honest split)</h2>
 <div class="card">
@@ -159,17 +189,21 @@ error-dump &amp; summary tools), every run, the model bake-off, and the coeffici
 <b>Human (candidate):</b> listened to the worst error clips in <b>both English and native Hindi</b> and
 identified (a) the flat number/address endings, (b) fade-out vs abrupt-cut, and (c) the silent-click
 data artifact — the insights that produced the top-weighted features and turned generic-prosody v1
-(AUC 0.66) into the final model. Also decided to trust the robust Hindi 850 ms over a lucky single-seed
-808 ms, and to keep pooled training after validating it helps Hindi.
+(AUC 0.66) into the final model. Also decided to trust robust numbers over lucky ones (Hindi 850 vs a
+single-seed 808), and to keep pooled training after validating it helps Hindi.<br><br>
+<b>Second pass (agent-driven audit, human-approved):</b> the headroom analysis of the scorer, the
+zero-vector robustness bug and its fix, the repeated-CV noise measurement that corrected the headline
+numbers, and the two rejected-as-noise experiments (duration-weighted holds, pause-history features).
 </div>
 
 <h2>Why it beats the status quo</h2>
 <p>The silence-only endpointer waits a fixed timer (1600 ms English). By scoring end-of-turn from
-prosody it reaches the true end ~24% faster on English at the same 5% interruption budget, and it does
+prosody it reaches the true end ~23% faster on English at the same 5% interruption budget, and it does
 so <b>causally</b> (features only from audio before the pause) so it is deployable in a live agent. The
-honest limits — Hindi's lexical/verb-final ceiling and dataset label noise — are documented rather than
-hidden, with a concrete next step (a causal frame-level sequence model + a from-scratch final-syllable
-cue) in <code>NOTES.md</code>.</p>
+honest limits — Hindi's lexical/verb-final dependence, dataset label noise, and the measured
+&plusmn;30 ms evaluation noise — are documented rather than hidden, with a concrete next step (attack
+the long-hold-vs-eot separation the metric actually depends on; a causal frame-level sequence model)
+in <code>NOTES.md</code>.</p>
 </body></html>"""
 
 with open("SUMMARY.html", "w") as f:

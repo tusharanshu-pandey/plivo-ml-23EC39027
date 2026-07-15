@@ -53,17 +53,20 @@ meaningless here (a booster memorizes 496 samples). Baselines to beat: **EN 1600
 - **Dev:** EN **1230 ± 32 ms**, HI **834 ± 22 ms**, AUC 0.654 ± 0.011. Two candidate "wins" (duration-weighted holds: single-split EN 1128; causal pause-history features: single-split EN 1158/AUC 0.699) **evaporated** under repeated CV — both were fold noise, neither is shipped.
 - **Conclusion:** the honest headline is 1230 ± 32 / 834 ± 22, not the single-split 1209/850; earlier ±20 ms deltas (e.g. v3's EN 1232→1209) are inside noise. Single-split numbers are no longer trusted.
 
-### Verdict
-- **English 1209 ms** vs 1600 baseline — decisive ~24% win, robust.
-- **Hindi 850 ms** = baseline — confirmed ceiling (label noise + lexical/verb-final dependence + short-hold distribution + ≤5% cutoff budget).
-- Overall OOF AUC **0.685**. Model: LR + bagged-GBM soft-voting ensemble on 30 causal features, pooled training.
+### Verdict (numbers = mean ± std over 5 grouped fold assignments; see Run 7)
+- **English 1230 ± 32 ms** vs 1600 baseline — decisive ~23% win, robust across fold seeds.
+- **Hindi 834 ± 22 ms** ≈ 850 baseline — the scorer's Hindi operating point degenerates to the silence-timer policy (threshold 0.05 fires on every pause); the current features can't yet separate true ends from the *long* holds that set the delay. Label noise + lexical/verb-final dependence cap the acoustics.
+- Overall OOF AUC **0.654 ± 0.011**. Model: LR + bagged-GBM soft-voting ensemble on 30 causal features, pooled training, plus a low-context safety guard in `predict.py` (Run 6).
+- Historical single-split numbers earlier in this log (e.g. EN 1209/1232) are kept as recorded but should be read with Run 7's ±30–45 ms noise bar in mind.
 
 ---
 
 ## Human vs coding-agent split (for honesty + SUMMARY)
 - **Coding agent (Claude):** all code (`eot_features.py`, `train.py`, `predict.py`, error-dump tool), the runs, the model bake-off, coefficient analysis.
 - **Human (me):** listened to the worst error clips and identified the number/address flat-ending failure mode and the fade-vs-cut distinction — which is what turned v1 (AUC 0.659, generic prosody) into v2's declination/rhythm features (the top-weighted signals). Decided to prioritize the English misses and to trust the robust HI=850 over the lucky 808.
+- **Second pass (agent-driven audit, human-approved):** scorer headroom analysis, the zero-vector robustness fix (Run 6), the repeated-CV noise measurement that corrected the headline numbers (Run 7), and two experiments rejected as fold noise (duration-weighted holds; causal pause-history features).
 
 ## Next levers (if continued)
-- Crack Hindi: targeted listening on **medium-duration Hindi holds (~0.4–0.85 s)** — those are what block a smaller delay. Needs human ears.
+- Crack Hindi where the metric actually lives: separate true ends from **long (>0.5 s) holds only** — 83% of Hindi holds are too short to ever cause a false cutoff at a 0.5 s delay, yet the model currently spends capacity on them. Targeted listening on those long mid-dictation holds; needs human ears.
+- English: the mean is dominated by the ~54% of eots that miss the operating threshold and pay the 1.6 s timeout — dump and listen to *marginal* errors near the threshold, not the global worst.
 - Frame-level sequence model (small GRU/TCN over per-frame prosody up to `pause_start`) instead of pooled stats — ambitious; would need a careful causal implementation.

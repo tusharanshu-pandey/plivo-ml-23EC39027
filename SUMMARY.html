@@ -12,13 +12,16 @@ code{background:#f0f0f0;padding:1px 5px;border-radius:3px} .star{color:#2a9d8f}
 
 <h2>Result</h2>
 <p>For every pause in a user turn we output <code>p_eot</code> from <b>causal</b> prosodic features
-(audio strictly before the pause). Honest grouped-by-turn out-of-fold, overall AUC <b>0.685</b>:</p>
+(audio strictly before the pause). Honest grouped-by-turn out-of-fold, averaged over 5 random
+fold assignments (single-split numbers proved untrustworthy — see "Evaluation noise" below), overall
+AUC <b>0.654 &plusmn; 0.011</b>:</p>
 <table><tr><th></th><th>English</th><th>Hindi</th></tr>
 <tr><td>Silence-only baseline</td><td>1600 ms</td><td>850 ms</td></tr>
-<tr><td>This model</td><td class="win">1209 ms</td><td>850 ms</td></tr></table>
-<div class="card"><svg viewBox="0 0 460 220"><rect x="70" y="48" width="46" height="132" fill="#c98b3a" rx="3"/><text x="93" y="42" text-anchor="middle" font-size="12" fill="#333">1600</text><rect x="128" y="80" width="46" height="100" fill="#2a9d8f" rx="3"/><text x="151" y="74" text-anchor="middle" font-size="12" fill="#333">1209</text><text x="116" y="196" text-anchor="middle" font-size="13" fill="#333">english</text><rect x="260" y="110" width="46" height="70" fill="#c98b3a" rx="3"/><text x="283" y="104" text-anchor="middle" font-size="12" fill="#333">850</text><rect x="318" y="110" width="46" height="70" fill="#2a9d8f" rx="3"/><text x="341" y="104" text-anchor="middle" font-size="12" fill="#333">850</text><text x="306" y="196" text-anchor="middle" font-size="13" fill="#333">hindi</text><line x1="56" y1="180" x2="450" y2="180" stroke="#ccc"/><text x="14" y="20" font-size="12" fill="#666">delay (ms) — lower is better</text><rect x="300" y="8" width="12" height="12" fill="#c98b3a"/><text x="316" y="18" font-size="11">baseline</text><rect x="300" y="24" width="12" height="12" fill="#2a9d8f"/><text x="316" y="34" font-size="11">model</text></svg></div>
-<p>Metric = mean response delay at &le;5% interrupted turns (lower is better). <b>English improves ~24%.</b>
-Hindi sits at its acoustic ceiling — see below.</p>
+<tr><td>This model</td><td class="win">1230 &plusmn; 32 ms</td><td>834 &plusmn; 22 ms</td></tr></table>
+<div class="card"><svg viewBox="0 0 460 220"><rect x="70" y="48" width="46" height="132" fill="#c98b3a" rx="3"/><text x="93" y="42" text-anchor="middle" font-size="12" fill="#333">1600</text><rect x="128" y="79" width="46" height="101" fill="#2a9d8f" rx="3"/><text x="151" y="73" text-anchor="middle" font-size="12" fill="#333">1230</text><text x="116" y="196" text-anchor="middle" font-size="13" fill="#333">english</text><rect x="260" y="110" width="46" height="70" fill="#c98b3a" rx="3"/><text x="283" y="104" text-anchor="middle" font-size="12" fill="#333">850</text><rect x="318" y="111" width="46" height="69" fill="#2a9d8f" rx="3"/><text x="341" y="105" text-anchor="middle" font-size="12" fill="#333">834</text><text x="306" y="196" text-anchor="middle" font-size="13" fill="#333">hindi</text><line x1="56" y1="180" x2="450" y2="180" stroke="#ccc"/><text x="14" y="20" font-size="12" fill="#666">delay (ms) — lower is better</text><rect x="300" y="8" width="12" height="12" fill="#c98b3a"/><text x="316" y="18" font-size="11">baseline</text><rect x="300" y="24" width="12" height="12" fill="#2a9d8f"/><text x="316" y="34" font-size="11">model</text></svg></div>
+<p>Metric = mean response delay at &le;5% interrupted turns (lower is better). <b>English improves
+~23%</b>; Hindi is statistically level with the (already strong) silence baseline — at the ceiling of
+the <i>current features</i>, not of the data (see below).</p>
 
 <h2>Approach</h2>
 <p>A soft-voting ensemble — a regularized <b>LogisticRegression</b> + a bagged shallow
@@ -28,7 +31,7 @@ prosody transfers. We picked this over a single HistGradientBoosting that memori
 (in-sample AUC 1.0) yet lost out-of-fold.</p>
 <p><b>The scorer sweeps threshold &amp; delay itself</b>, so we optimize <i>separability</i>, not a
 timer. That means down-ranking mid-turn holds and up-ranking true ends:</p>
-<div class="card"><svg viewBox="0 0 460 200"><rect x="34.0" y="164" width="18.6" height="2" fill="#c98b3a"/><rect x="53.6" y="166" width="18.6" height="0" fill="#2a9d8f"/><rect x="73.2" y="107" width="18.6" height="59" fill="#c98b3a"/><rect x="92.8" y="159" width="18.6" height="7" fill="#2a9d8f"/><rect x="112.4" y="56" width="18.6" height="110" fill="#c98b3a"/><rect x="132.0" y="124" width="18.6" height="42" fill="#2a9d8f"/><rect x="151.6" y="34" width="18.6" height="132" fill="#c98b3a"/><rect x="171.2" y="98" width="18.6" height="68" fill="#2a9d8f"/><rect x="190.8" y="73" width="18.6" height="93" fill="#c98b3a"/><rect x="210.4" y="98" width="18.6" height="68" fill="#2a9d8f"/><rect x="230.0" y="119" width="18.6" height="47" fill="#c98b3a"/><rect x="249.6" y="107" width="18.6" height="59" fill="#2a9d8f"/><rect x="269.2" y="132" width="18.6" height="34" fill="#c98b3a"/><rect x="288.8" y="115" width="18.6" height="51" fill="#2a9d8f"/><rect x="308.4" y="147" width="18.6" height="19" fill="#c98b3a"/><rect x="328.0" y="137" width="18.6" height="29" fill="#2a9d8f"/><rect x="347.6" y="161" width="18.6" height="5" fill="#c98b3a"/><rect x="367.2" y="151" width="18.6" height="15" fill="#2a9d8f"/><rect x="386.8" y="166" width="18.6" height="0" fill="#c98b3a"/><rect x="406.4" y="166" width="18.6" height="0" fill="#2a9d8f"/><line x1="34" y1="166" x2="426" y2="166" stroke="#ccc"/><text x="34" y="182" font-size="11" fill="#666">p_eot 0</text><text x="402" y="182" font-size="11" fill="#666">1</text><text x="10" y="16" font-size="12" fill="#666">OOF p_eot distribution</text><rect x="300" y="6" width="12" height="12" fill="#2a9d8f"/><text x="316" y="16" font-size="11">eot</text><rect x="350" y="6" width="12" height="12" fill="#c98b3a"/><text x="366" y="16" font-size="11">hold</text></svg></div>
+<div class="card"><svg viewBox="0 0 460 200"><rect x="34.0" y="166" width="18.6" height="0" fill="#c98b3a"/><rect x="53.6" y="164" width="18.6" height="2" fill="#2a9d8f"/><rect x="73.2" y="101" width="18.6" height="65" fill="#c98b3a"/><rect x="92.8" y="152" width="18.6" height="14" fill="#2a9d8f"/><rect x="112.4" y="58" width="18.6" height="108" fill="#c98b3a"/><rect x="132.0" y="132" width="18.6" height="34" fill="#2a9d8f"/><rect x="151.6" y="34" width="18.6" height="132" fill="#c98b3a"/><rect x="171.2" y="96" width="18.6" height="70" fill="#2a9d8f"/><rect x="190.8" y="85" width="18.6" height="81" fill="#c98b3a"/><rect x="210.4" y="87" width="18.6" height="79" fill="#2a9d8f"/><rect x="230.0" y="113" width="18.6" height="53" fill="#c98b3a"/><rect x="249.6" y="125" width="18.6" height="41" fill="#2a9d8f"/><rect x="269.2" y="123" width="18.6" height="43" fill="#c98b3a"/><rect x="288.8" y="108" width="18.6" height="58" fill="#2a9d8f"/><rect x="308.4" y="145" width="18.6" height="21" fill="#c98b3a"/><rect x="328.0" y="132" width="18.6" height="34" fill="#2a9d8f"/><rect x="347.6" y="161" width="18.6" height="5" fill="#c98b3a"/><rect x="367.2" y="157" width="18.6" height="9" fill="#2a9d8f"/><rect x="386.8" y="166" width="18.6" height="0" fill="#c98b3a"/><rect x="406.4" y="164" width="18.6" height="2" fill="#2a9d8f"/><line x1="34" y1="166" x2="426" y2="166" stroke="#ccc"/><text x="34" y="182" font-size="11" fill="#666">p_eot 0</text><text x="402" y="182" font-size="11" fill="#666">1</text><text x="10" y="16" font-size="12" fill="#666">OOF p_eot distribution</text><rect x="300" y="6" width="12" height="12" fill="#2a9d8f"/><text x="316" y="16" font-size="11">eot</text><rect x="350" y="6" width="12" height="12" fill="#c98b3a"/><text x="366" y="16" font-size="11">hold</text></svg></div>
 
 <h2>What the features are (and where they came from)</h2>
 <p>Standardized LogisticRegression weights. <span class="star">&starf;</span> = feature added because of
@@ -48,11 +51,31 @@ that end <i>flat</i> (no pitch fall); "abruptness" appeared in both classes. Add
 <li><b>Listened to the worst Hindi errors (native speaker)</b> &rarr; ends <b>fade out</b>
 (<i>"shukriya", "karlunga"</i>), dangerous holds <b>cut abruptly</b> mid-dictation
 (<i>"panch&hellip; likh lijiye"</i>); one "hold" was a silent click scored 0.88. Added fade-vs-cut +
-a silence guard &rarr; English 1232&rarr;1209 ms.</li>
-<li><b>Hindi ceiling confirmed</b>: verb-final Hindi ends on a short auxiliary whose identity is
-<i>lexical</i>, plus genuine label noise (holds a native speaker hears as finished). Acoustics + the
-&le;5% budget cannot go below 850 ms here.</li>
+a silence guard (single-split English 1232&rarr;1209 ms — later shown to be within evaluation noise).</li>
+<li><b>Hindi limit diagnosed</b>: verb-final Hindi ends on a short auxiliary whose identity is
+<i>lexical</i>, plus genuine label noise (holds a native speaker hears as finished). With the current
+features the &le;5% budget blocks anything below the baseline delay.</li>
+<li><b>Robustness guard</b>: pauses with &lt; 0.2 s of history got a zero feature vector that the
+model scored <b>0.63</b> (fires at any threshold). 0/496 dev pauses hit this, but the hidden set
+might — <code>predict.py</code> now emits a safe 0.02 for them.</li>
+<li><b>Evaluation noise measured</b>: repeating the grouped CV over 5 random fold assignments showed
+&plusmn;30&ndash;45 ms delay noise — larger than most logged deltas. Two plausible "wins"
+(duration-weighted hold samples; causal pause-history features) <b>failed replication</b> and were
+rejected. All headline numbers are now mean &plusmn; std across seeds.</li>
 </ol>
+
+<h2>Evaluation noise &amp; where the metric actually lives</h2>
+<div class="card">
+<b>Single-split numbers lie at this sample size.</b> The previously reported EN 1209 / HI 850 came from
+one fortunate fold assignment; across 5 assignments the honest estimate is
+EN 1230 &plusmn; 32 ms,
+HI 834 &plusmn; 22 ms.<br><br>
+<b>Hindi's operating point is the silence baseline's policy</b>: the scorer picks threshold 0.05
+(every pause fires) with a 0.85 s delay set purely by the handful of holds longer than 0.85 s —
+despite Hindi AUC &asymp; 0.71, the ranking isn't yet usable there. The path to beating it is
+separating true ends from only the <i>long</i> (&gt;0.5 s) holds: 83% of Hindi holds are shorter than
+0.5 s and can never cause a false cutoff at that delay. On English the mean is dominated by the 54%
+of true ends that miss the threshold and pay the full 1.6 s timeout.</div>
 
 <h2>Human vs coding agent (honest split)</h2>
 <div class="card">
@@ -61,15 +84,19 @@ error-dump &amp; summary tools), every run, the model bake-off, and the coeffici
 <b>Human (candidate):</b> listened to the worst error clips in <b>both English and native Hindi</b> and
 identified (a) the flat number/address endings, (b) fade-out vs abrupt-cut, and (c) the silent-click
 data artifact — the insights that produced the top-weighted features and turned generic-prosody v1
-(AUC 0.66) into the final model. Also decided to trust the robust Hindi 850 ms over a lucky single-seed
-808 ms, and to keep pooled training after validating it helps Hindi.
+(AUC 0.66) into the final model. Also decided to trust robust numbers over lucky ones (Hindi 850 vs a
+single-seed 808), and to keep pooled training after validating it helps Hindi.<br><br>
+<b>Second pass (agent-driven audit, human-approved):</b> the headroom analysis of the scorer, the
+zero-vector robustness bug and its fix, the repeated-CV noise measurement that corrected the headline
+numbers, and the two rejected-as-noise experiments (duration-weighted holds, pause-history features).
 </div>
 
 <h2>Why it beats the status quo</h2>
 <p>The silence-only endpointer waits a fixed timer (1600 ms English). By scoring end-of-turn from
-prosody it reaches the true end ~24% faster on English at the same 5% interruption budget, and it does
+prosody it reaches the true end ~23% faster on English at the same 5% interruption budget, and it does
 so <b>causally</b> (features only from audio before the pause) so it is deployable in a live agent. The
-honest limits — Hindi's lexical/verb-final ceiling and dataset label noise — are documented rather than
-hidden, with a concrete next step (a causal frame-level sequence model + a from-scratch final-syllable
-cue) in <code>NOTES.md</code>.</p>
+honest limits — Hindi's lexical/verb-final dependence, dataset label noise, and the measured
+&plusmn;30 ms evaluation noise — are documented rather than hidden, with a concrete next step (attack
+the long-hold-vs-eot separation the metric actually depends on; a causal frame-level sequence model)
+in <code>NOTES.md</code>.</p>
 </body></html>
