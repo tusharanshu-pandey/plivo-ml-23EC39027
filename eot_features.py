@@ -53,6 +53,22 @@ FEATURE_NAMES = [
 N_FEATURES = len(FEATURE_NAMES)
 
 
+LOW_CONTEXT_P = 0.02     # emitted instead of a model score when there is no usable history
+
+
+def low_context(x, sr, pause_start):
+    """True when the causal prefix is too short to compute features.
+
+    extract_features returns the all-zero vector in this case, and the
+    trained model maps that vector to an arbitrary score (measured 0.63 —
+    above every operating threshold). Callers must emit LOW_CONTEXT_P
+    instead: with no evidence the agent must NOT take the floor — a false
+    fire interrupts a whole turn, while waiting costs at most the 1.6 s
+    timeout on a rare very-early eot.
+    """
+    return min(len(x), int(pause_start * sr)) < int(MIN_SEG_S * sr)
+
+
 # ---------------------------------------------------------------- helpers
 def _slope(y):
     """Least-squares slope of a short sequence (0.0 if too short/flat)."""

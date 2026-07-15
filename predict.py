@@ -16,7 +16,7 @@ import os
 import joblib
 import numpy as np
 
-from eot_features import extract_features, FEATURE_NAMES
+from eot_features import extract_features, low_context, FEATURE_NAMES, LOW_CONTEXT_P
 from features import load_wav
 
 
@@ -34,7 +34,7 @@ def main():
     with open(os.path.join(args.data_dir, "labels.csv")) as f:
         rows = list(csv.DictReader(f))
 
-    wav_cache, feats, keys = {}, [], []
+    wav_cache, feats, keys, no_ctx = {}, [], [], []
     for r in rows:
         path = os.path.join(args.data_dir, r["audio_file"])
         if path not in wav_cache:
@@ -42,9 +42,11 @@ def main():
         x, sr = wav_cache[path]
         feats.append(extract_features(x, sr, float(r["pause_start"]), int(r["pause_index"])))
         keys.append((r["turn_id"], r["pause_index"]))
+        no_ctx.append(low_context(x, sr, float(r["pause_start"])))
 
     X = np.array(feats, dtype=np.float32)
     p = model.predict_proba(X)[:, 1] if len(X) else np.array([])
+    p = np.where(no_ctx, LOW_CONTEXT_P, p)   # never fire on a pause we have no evidence for
 
     with open(args.out, "w", newline="") as f:
         w = csv.writer(f)

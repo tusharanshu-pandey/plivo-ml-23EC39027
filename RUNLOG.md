@@ -42,6 +42,11 @@ meaningless here (a booster memorizes 496 samples). Baselines to beat: **EN 1600
 - **Dev:** pooled → Hindi AUC **0.706**; Hindi-only → **0.635** (worse). Delay 850 either way.
 - **Conclusion:** **pooling English+Hindi *helps* Hindi** (shared prosody transfer) — design validated. Hindi's 850 ms is a genuine ceiling for acoustic-only EOT here, not a tuning miss.
 
+### Run 6 — guard: never fire on a pause with no audible evidence
+- **Found (agent audit):** pauses with < 0.2 s of history get the all-zero feature vector, which the trained model maps to **p_eot = 0.631** — above every operating threshold, i.e. a guaranteed fire with zero evidence. **0/496 dev pauses** hit this path (so dev scores are unchanged), but one early-turn pause per hidden file could burn the 5% cutoff budget.
+- **Changed:** `predict.py` emits `LOW_CONTEXT_P = 0.02` for such pauses (single-sourced in `eot_features.low_context`). Rationale: a false fire costs a whole interrupted turn; waiting costs at most the 1.6 s timeout on a rare very-early eot.
+- **Dev:** EN/HI unchanged (no dev row affected) — pure hidden-set downside protection.
+
 ### Verdict
 - **English 1209 ms** vs 1600 baseline — decisive ~24% win, robust.
 - **Hindi 850 ms** = baseline — confirmed ceiling (label noise + lexical/verb-final dependence + short-hold distribution + ≤5% cutoff budget).
