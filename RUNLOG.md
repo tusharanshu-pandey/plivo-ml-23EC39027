@@ -47,6 +47,12 @@ meaningless here (a booster memorizes 496 samples). Baselines to beat: **EN 1600
 - **Changed:** `predict.py` emits `LOW_CONTEXT_P = 0.02` for such pauses (single-sourced in `eot_features.low_context`). Rationale: a false fire costs a whole interrupted turn; waiting costs at most the 1.6 s timeout on a rare very-early eot.
 - **Dev:** EN/HI unchanged (no dev row affected) — pure hidden-set downside protection.
 
+### Run 7 — measure evaluation noise; repeated grouped CV becomes the harness
+- **Hypothesis (agent audit):** with 100 turns/language, a single 5-fold grouped split has delay noise comparable to our run-to-run deltas.
+- **Changed:** `train.py` now averages over **5 random grouped fold assignments** (`--cv_seeds`) and reports mean ± std; decisions must clear the std. Also prints a Hindi-weighted (3:1) selection metric since the hidden set is mostly Hindi.
+- **Dev:** EN **1230 ± 32 ms**, HI **834 ± 22 ms**, AUC 0.654 ± 0.011. Two candidate "wins" (duration-weighted holds: single-split EN 1128; causal pause-history features: single-split EN 1158/AUC 0.699) **evaporated** under repeated CV — both were fold noise, neither is shipped.
+- **Conclusion:** the honest headline is 1230 ± 32 / 834 ± 22, not the single-split 1209/850; earlier ±20 ms deltas (e.g. v3's EN 1232→1209) are inside noise. Single-split numbers are no longer trusted.
+
 ### Verdict
 - **English 1209 ms** vs 1600 baseline — decisive ~24% win, robust.
 - **Hindi 850 ms** = baseline — confirmed ceiling (label noise + lexical/verb-final dependence + short-hold distribution + ≤5% cutoff budget).

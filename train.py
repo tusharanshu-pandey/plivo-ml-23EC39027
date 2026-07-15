@@ -8,6 +8,11 @@ Reports honest grouped (by turn) cross-validation: AUC + the REAL scorer
 delay on out-of-fold predictions (train never sees the turn it predicts),
 then refits on all data and saves {scaler, clf, feature_names}.
 
+The CV is REPEATED over several random fold assignments (--cv_seeds): a
+single 5-fold split of ~100 turns/language has ±30-45 ms delay noise, which
+is larger than most feature/model deltas — decisions are made on the
+mean ± std across seeds, never on one split.
+
 predict.py loads that model; it never refits.
 """
 import argparse
@@ -20,7 +25,6 @@ from sklearn.ensemble import GradientBoostingClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GroupKFold
 from sklearn.metrics import roc_auc_score
 
 from eot_features import extract_features, FEATURE_NAMES
@@ -72,6 +76,16 @@ def make_model():
     return VotingClassifier(estimators=[("lr", lin)] + gbms, voting="soft")
 
 
+def random_group_folds(groups, seed, k=5):
+    """k grouped folds from a seed-shuffled round-robin over unique turns."""
+    rng = np.random.RandomState(seed)
+    ug = np.array(sorted(set(groups)))
+    rng.shuffle(ug)
+    fold_of = {g: i % k for i, g in enumerate(ug)}
+    fid = np.array([fold_of[g] for g in groups])
+    return [(np.where(fid != j)[0], np.where(fid == j)[0]) for j in range(k)]
+
+
 def oof_score_per_language(oof_p, y, langs, keys, dir_of, tmpdir):
     """Write OOF predictions per language and run the real scorer on them."""
     os.makedirs(tmpdir, exist_ok=True)
@@ -95,40 +109,48 @@ def main():
     ap.add_argument("--data_dirs", nargs="+", default=DEFAULT_DIRS)
     ap.add_argument("--model_out", default="model.pkl")
     ap.add_argument("--tmpdir", default="scratch")
+    ap.add_argument("--cv_seeds", type=int, default=5,
+                    help="random grouped fold assignments to average over")
     args = ap.parse_args()
 
     X, y, groups, langs, keys, dir_of = build_dataset(args.data_dirs)
     print(f"dataset: {len(y)} pauses, {len(set(groups))} turns, "
           f"{int(y.sum())} eot / {int((1-y).sum())} hold, {X.shape[1]} features")
 
-    # ---- grouped CV: honest AUC + out-of-fold probabilities ----
-    gkf = GroupKFold(n_splits=5)
-    oof = np.zeros(len(y), dtype=float)
-    fold_auc = []
-    for tr, te in gkf.split(X, y, groups):
-        m = make_model()
-        m.fit(X[tr], y[tr])
-        p = m.predict_proba(X[te])[:, 1]
-        oof[te] = p
-        fold_auc.append(roc_auc_score(y[te], p))
-    print(f"grouped-CV AUC: {np.mean(fold_auc):.3f} +/- {np.std(fold_auc):.3f}  "
-          f"(overall OOF AUC {roc_auc_score(y, oof):.3f})")
+    # ---- repeated grouped CV: honest AUC + REAL scorer delay, mean over seeds ----
+    seed_auc, seed_delay = [], {}
+    for seed in range(args.cv_seeds):
+        oof = np.zeros(len(y), dtype=float)
+        for tr, te in random_group_folds(groups, seed):
+            m = make_model()
+            m.fit(X[tr], y[tr])
+            oof[te] = m.predict_proba(X[te])[:, 1]
+        auc = roc_auc_score(y, oof)
+        seed_auc.append(auc)
+        res = oof_score_per_language(oof, y, langs, keys, dir_of, args.tmpdir)
+        line = "  ".join(f"{lang}={r['latency']*1000:.0f}ms(thr {r['threshold']}, "
+                         f"delay {r['delay']*1000:.0f})" for lang, r in res.items())
+        print(f"  seed {seed}: AUC={auc:.3f}  {line}")
+        for lang, r in res.items():
+            seed_delay.setdefault(lang, []).append(r["latency"] * 1000)
 
-    # ---- REAL scorer on OOF predictions, per language ----
-    res = oof_score_per_language(oof, y, langs, keys, dir_of, args.tmpdir)
-    print("out-of-fold scorer delay (@ <=5% interrupted turns):")
-    for lang, r in res.items():
-        print(f"  {lang:8s}: {r['latency']*1000:6.0f} ms   "
-              f"(AUC {r['auc']:.3f}, cutoff {r['cutoff']*100:.1f}%, "
-              f"thr {r['threshold']}, delay {r['delay']*1000:.0f} ms)")
+    print(f"grouped-CV over {args.cv_seeds} fold seeds "
+          f"(mean±std — trust deltas only if they clear the std):")
+    print(f"  OOF AUC : {np.mean(seed_auc):.3f} ± {np.std(seed_auc):.3f}")
+    for lang, v in seed_delay.items():
+        print(f"  {lang:8s}: {np.mean(v):6.0f} ± {np.std(v):.0f} ms")
+    if len(seed_delay) == 2 and "hindi" in seed_delay:
+        others = [l for l in seed_delay if l != "hindi"]
+        sel = 0.75 * np.mean(seed_delay["hindi"]) + 0.25 * np.mean(seed_delay[others[0]])
+        print(f"  selection metric (hidden set is mostly Hindi, 3:1): {sel:.0f} ms")
 
-    # linear reference (sanity)
+    # linear reference (sanity, seed-0 folds)
     lin = make_pipeline(StandardScaler(),
                         LogisticRegression(max_iter=2000, class_weight="balanced"))
     lin_oof = np.zeros(len(y))
-    for tr, te in gkf.split(X, y, groups):
+    for tr, te in random_group_folds(groups, 0):
         lin.fit(X[tr], y[tr]); lin_oof[te] = lin.predict_proba(X[te])[:, 1]
-    print(f"linear reference OOF AUC: {roc_auc_score(y, lin_oof):.3f}")
+    print(f"linear reference OOF AUC (seed 0): {roc_auc_score(y, lin_oof):.3f}")
 
     # ---- refit on ALL data and save ----
     model = make_model()
