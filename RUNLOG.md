@@ -53,6 +53,12 @@ meaningless here (a booster memorizes 496 samples). Baselines to beat: **EN 1600
 - **Dev:** EN **1230 ± 32 ms**, HI **834 ± 22 ms**, AUC 0.654 ± 0.011. Two candidate "wins" (duration-weighted holds: single-split EN 1128; causal pause-history features: single-split EN 1158/AUC 0.699) **evaporated** under repeated CV — both were fold noise, neither is shipped.
 - **Conclusion:** the honest headline is 1230 ± 32 / 834 ± 22, not the single-split 1209/850; earlier ±20 ms deltas (e.g. v3's EN 1232→1209) are inside noise. Single-split numbers are no longer trusted.
 
+### Run 8 — pyin pitch tracker: better F0 ≠ better metric (not shipped)
+- **Hypothesis:** the top-weighted feature (`f0_final_pctl`) sits on a bare autocorrelation tracker; a cleaner algorithmic tracker (`librosa.pyin` — YIN-based, no pretrained weights) should sharpen every pitch feature.
+- **Changed (experiment only):** pyin for the 1.5 s local window (same 10 ms hop), autocorr kept for the speaker baseline. The cleanup was real: voiced runs defragmented (7.5 → 3.3 segments/window), voiced fraction 0.73 → 0.63.
+- **Dev (5 fold seeds):** AUC 0.654 → **0.667** (+~1σ), but delay EN **1256 ± 31** / HI **840 ± 16** vs base 1230 ± 32 / 834 ± 22 — no win where it counts, and ~0.3 s/pause slower inference.
+- **Conclusion:** **not shipped.** Cleaner pitch raised *average* ranking quality but didn't move the specific pauses that set the operating point — more evidence the metric lives in top-of-ranking purity (EN) and long-hold separation (HI), not AUC.
+
 ### Verdict (numbers = mean ± std over 5 grouped fold assignments; see Run 7)
 - **English 1230 ± 32 ms** vs 1600 baseline — decisive ~23% win, robust across fold seeds.
 - **Hindi 834 ± 22 ms** ≈ 850 baseline — the scorer's Hindi operating point degenerates to the silence-timer policy (threshold 0.05 fires on every pause); the current features can't yet separate true ends from the *long* holds that set the delay. Label noise + lexical/verb-final dependence cap the acoustics.
