@@ -30,6 +30,23 @@ meaningless here (a booster memorizes 496 samples). Baselines to beat: **EN 1600
 - **Evidence the human insight drove the model:** top standardized LR coefficients are `f0_final_pctl` **−0.62** (final pitch at the speaker's floor ⇒ eot, even on flat numbers) and `voiced_seg_dur_std` **−0.50** (steady digit-reading rhythm ⇒ eot) — both from Run 2's listening.
 - **Conclusion:** English decisively beaten. **Hindi sits at its acoustic floor**: AUC on Hindi is ~0.72, but the ≤5% false-cutoff constraint + short Hindi holds leave no room for a smaller delay. A single seed occasionally hit 808 ms on HI — that was variance, not signal; the ensemble reports the robust 850 ms.
 
+### Run 4 — v3 features from Hindi error-listening
+- **Heard (human, native Hindi, 20 worst Hindi clips):** true turn-ends **fade out** (*"shukriya", "aa jaungi", "karlunga", "nau"*); the dangerous long holds **stop abruptly** mid-dictation (*"panch… likh lijiye", "note kariye number…"*) — speaker fades when done, cuts abruptly when continuing a number/list. One "hold" (`hi__060`) was a **click with no speech**, yet scored 0.88. Several holds sounded *finished* even to a native speaker → **label noise** caps AUC.
+- **Changed:** +4 features — `e_fade_slope` (energy slope over last 500 ms), `e_last_minus_winmin` (faded to the window floor?), `speech_presence` (silence/click guard), `local_max_minus_spkmax`.
+- **Dev:** OOF AUC 0.685; EN **1209 ms** (↓ from 1232), HI **850 ms** (unchanged).
+- **Conclusion:** fade/silence cues help English slightly; Hindi unmoved — the blocking holds are mid-dictation pauses that need the *words* (verb-final Hindi), which acoustics can't recover.
+
+### Run 5 — is Hindi better with a Hindi-focused model? (hidden set is mostly Hindi)
+- **Hypothesis:** since grading is mostly Hindi, a Hindi-only / Hindi-upweighted model might beat the pooled one on Hindi.
+- **Changed:** trained Hindi-only vs pooled; compared Hindi OOF.
+- **Dev:** pooled → Hindi AUC **0.706**; Hindi-only → **0.635** (worse). Delay 850 either way.
+- **Conclusion:** **pooling English+Hindi *helps* Hindi** (shared prosody transfer) — design validated. Hindi's 850 ms is a genuine ceiling for acoustic-only EOT here, not a tuning miss.
+
+### Verdict
+- **English 1209 ms** vs 1600 baseline — decisive ~24% win, robust.
+- **Hindi 850 ms** = baseline — confirmed ceiling (label noise + lexical/verb-final dependence + short-hold distribution + ≤5% cutoff budget).
+- Overall OOF AUC **0.685**. Model: LR + bagged-GBM soft-voting ensemble on 30 causal features, pooled training.
+
 ---
 
 ## Human vs coding-agent split (for honesty + SUMMARY)

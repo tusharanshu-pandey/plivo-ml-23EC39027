@@ -46,6 +46,9 @@ FEATURE_NAMES = [
     # --- v2: list/number rhythm + last-voiced-region focus ---
     "n_voiced_segments", "voiced_seg_dur_mean", "voiced_seg_dur_std",
     "last_voiced_offset",
+    # --- v3 (Hindi listening): fade-out vs abrupt-stop + speech-presence guard ---
+    "e_fade_slope", "e_last_minus_winmin", "speech_presence",
+    "local_max_minus_spkmax",
 ]
 N_FEATURES = len(FEATURE_NAMES)
 
@@ -110,6 +113,11 @@ def extract_features(x, sr, pause_start, pause_index=0):
     e_last_minus_spkmed = float(e_last - spk_e_med)
     e_final_minus_spkmax = float(e_last - spk_e_max)                       # how far below the turn's peak
     e_tail_drop = float(e_last - e[-30]) if len(e) >= 30 else (float(e_last - e[0]) if len(e) else 0.0)
+    # v3: fade (energy declines to floor) vs abrupt cut (energy still high, then silence)
+    e_fade_slope = _slope(e[-50:]) if len(e) >= 3 else 0.0                 # slope over last ~500 ms
+    e_last_minus_winmin = float(e_last - e.min()) if len(e) else 0.0       # ~0 => faded to the window floor
+    speech_presence = float(np.mean(e > spk_e_med)) if len(e) else 0.0     # low for near-silent/click segments
+    local_max_minus_spkmax = float(e.max() - spk_e_max) if len(e) else -80.0
 
     # ---- pitch (F0) ----
     f0 = f0_contour(local, sr)                      # 40 ms / 10 ms frames, 0.0 = unvoiced
@@ -186,6 +194,10 @@ def extract_features(x, sr, pause_start, pause_index=0):
         "voiced_seg_dur_mean": voiced_seg_dur_mean,
         "voiced_seg_dur_std": voiced_seg_dur_std,
         "last_voiced_offset": last_voiced_offset,
+        "e_fade_slope": e_fade_slope,
+        "e_last_minus_winmin": e_last_minus_winmin,
+        "speech_presence": speech_presence,
+        "local_max_minus_spkmax": local_max_minus_spkmax,
     }
     vec = np.array([values[k] for k in FEATURE_NAMES], dtype=np.float32)
     return np.nan_to_num(vec, nan=0.0, posinf=0.0, neginf=0.0)

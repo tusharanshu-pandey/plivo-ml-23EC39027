@@ -1,0 +1,75 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>EOT Detection — Summary (23EC39027)</title>
+<style>
+body{font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;max-width:860px;margin:32px auto;padding:0 18px;color:#1c1c1c}
+h1{font-size:24px;margin-bottom:2px} h2{margin-top:30px;border-bottom:2px solid #2a9d8f;padding-bottom:4px}
+.sub{color:#666} table{border-collapse:collapse;margin:10px 0} td,th{border:1px solid #ddd;padding:6px 12px;text-align:left}
+th{background:#f4f4f4} .win{color:#2a9d8f;font-weight:600} .card{background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 18px;margin:10px 0}
+code{background:#f0f0f0;padding:1px 5px;border-radius:3px} .star{color:#2a9d8f}
+</style></head><body>
+<h1>End-of-Turn Detection</h1>
+<div class="sub">Tusharanshu Pandey &middot; 23EC39027 &middot; STT track &middot; CPU-only, no pretrained models</div>
+
+<h2>Result</h2>
+<p>For every pause in a user turn we output <code>p_eot</code> from <b>causal</b> prosodic features
+(audio strictly before the pause). Honest grouped-by-turn out-of-fold, overall AUC <b>0.685</b>:</p>
+<table><tr><th></th><th>English</th><th>Hindi</th></tr>
+<tr><td>Silence-only baseline</td><td>1600 ms</td><td>850 ms</td></tr>
+<tr><td>This model</td><td class="win">1209 ms</td><td>850 ms</td></tr></table>
+<div class="card"><svg viewBox="0 0 460 220"><rect x="70" y="48" width="46" height="132" fill="#c98b3a" rx="3"/><text x="93" y="42" text-anchor="middle" font-size="12" fill="#333">1600</text><rect x="128" y="80" width="46" height="100" fill="#2a9d8f" rx="3"/><text x="151" y="74" text-anchor="middle" font-size="12" fill="#333">1209</text><text x="116" y="196" text-anchor="middle" font-size="13" fill="#333">english</text><rect x="260" y="110" width="46" height="70" fill="#c98b3a" rx="3"/><text x="283" y="104" text-anchor="middle" font-size="12" fill="#333">850</text><rect x="318" y="110" width="46" height="70" fill="#2a9d8f" rx="3"/><text x="341" y="104" text-anchor="middle" font-size="12" fill="#333">850</text><text x="306" y="196" text-anchor="middle" font-size="13" fill="#333">hindi</text><line x1="56" y1="180" x2="450" y2="180" stroke="#ccc"/><text x="14" y="20" font-size="12" fill="#666">delay (ms) — lower is better</text><rect x="300" y="8" width="12" height="12" fill="#c98b3a"/><text x="316" y="18" font-size="11">baseline</text><rect x="300" y="24" width="12" height="12" fill="#2a9d8f"/><text x="316" y="34" font-size="11">model</text></svg></div>
+<p>Metric = mean response delay at &le;5% interrupted turns (lower is better). <b>English improves ~24%.</b>
+Hindi sits at its acoustic ceiling — see below.</p>
+
+<h2>Approach</h2>
+<p>A soft-voting ensemble — a regularized <b>LogisticRegression</b> + a bagged shallow
+<b>GradientBoosting</b> (3 seeds) — over 30 causal features, trained on <b>pooled</b> English+Hindi.
+Pooling was validated: a Hindi-only model scored worse on Hindi (AUC 0.635 vs 0.706), i.e. English
+prosody transfers. We picked this over a single HistGradientBoosting that memorized the training set
+(in-sample AUC 1.0) yet lost out-of-fold.</p>
+<p><b>The scorer sweeps threshold &amp; delay itself</b>, so we optimize <i>separability</i>, not a
+timer. That means down-ranking mid-turn holds and up-ranking true ends:</p>
+<div class="card"><svg viewBox="0 0 460 200"><rect x="34.0" y="164" width="18.6" height="2" fill="#c98b3a"/><rect x="53.6" y="166" width="18.6" height="0" fill="#2a9d8f"/><rect x="73.2" y="107" width="18.6" height="59" fill="#c98b3a"/><rect x="92.8" y="159" width="18.6" height="7" fill="#2a9d8f"/><rect x="112.4" y="56" width="18.6" height="110" fill="#c98b3a"/><rect x="132.0" y="124" width="18.6" height="42" fill="#2a9d8f"/><rect x="151.6" y="34" width="18.6" height="132" fill="#c98b3a"/><rect x="171.2" y="98" width="18.6" height="68" fill="#2a9d8f"/><rect x="190.8" y="73" width="18.6" height="93" fill="#c98b3a"/><rect x="210.4" y="98" width="18.6" height="68" fill="#2a9d8f"/><rect x="230.0" y="119" width="18.6" height="47" fill="#c98b3a"/><rect x="249.6" y="107" width="18.6" height="59" fill="#2a9d8f"/><rect x="269.2" y="132" width="18.6" height="34" fill="#c98b3a"/><rect x="288.8" y="115" width="18.6" height="51" fill="#2a9d8f"/><rect x="308.4" y="147" width="18.6" height="19" fill="#c98b3a"/><rect x="328.0" y="137" width="18.6" height="29" fill="#2a9d8f"/><rect x="347.6" y="161" width="18.6" height="5" fill="#c98b3a"/><rect x="367.2" y="151" width="18.6" height="15" fill="#2a9d8f"/><rect x="386.8" y="166" width="18.6" height="0" fill="#c98b3a"/><rect x="406.4" y="166" width="18.6" height="0" fill="#2a9d8f"/><line x1="34" y1="166" x2="426" y2="166" stroke="#ccc"/><text x="34" y="182" font-size="11" fill="#666">p_eot 0</text><text x="402" y="182" font-size="11" fill="#666">1</text><text x="10" y="16" font-size="12" fill="#666">OOF p_eot distribution</text><rect x="300" y="6" width="12" height="12" fill="#2a9d8f"/><text x="316" y="16" font-size="11">eot</text><rect x="350" y="6" width="12" height="12" fill="#c98b3a"/><text x="366" y="16" font-size="11">hold</text></svg></div>
+
+<h2>What the features are (and where they came from)</h2>
+<p>Standardized LogisticRegression weights. <span class="star">&starf;</span> = feature added because of
+a <b>human error-listening</b> pass (see below), not generic prosody:</p>
+<div class="card"><svg viewBox="0 0 560 328"><line x1="300" y1="0" x2="300" y2="328" stroke="#ddd"/><rect x="90" y="10" width="210" height="16" fill="#c98b3a" rx="2"/><text x="8" y="23" font-size="12" fill="#333">f0_final_pctl ★</text><text x="86" y="23" font-size="11" fill="#666" text-anchor="end">-0.62</text><rect x="300" y="32" width="208" height="16" fill="#2a9d8f" rx="2"/><text x="8" y="45" font-size="12" fill="#333">e_last_minus_winmin ★</text><text x="512" y="45" font-size="11" fill="#666" text-anchor="start">+0.61</text><rect x="133" y="54" width="167" height="16" fill="#c98b3a" rx="2"/><text x="8" y="67" font-size="12" fill="#333">voiced_seg_dur_std ★</text><text x="129" y="67" font-size="11" fill="#666" text-anchor="end">-0.49</text><rect x="149" y="76" width="151" height="16" fill="#c98b3a" rx="2"/><text x="8" y="89" font-size="12" fill="#333">e_last</text><text x="145" y="89" font-size="11" fill="#666" text-anchor="end">-0.45</text><rect x="300" y="98" width="137" height="16" fill="#2a9d8f" rx="2"/><text x="8" y="111" font-size="12" fill="#333">pause_index</text><text x="441" y="111" font-size="11" fill="#666" text-anchor="start">+0.40</text><rect x="175" y="120" width="125" height="16" fill="#c98b3a" rx="2"/><text x="8" y="133" font-size="12" fill="#333">sc_mean</text><text x="171" y="133" font-size="11" fill="#666" text-anchor="end">-0.37</text><rect x="300" y="142" width="119" height="16" fill="#2a9d8f" rx="2"/><text x="8" y="155" font-size="12" fill="#333">voiced_frac</text><text x="423" y="155" font-size="11" fill="#666" text-anchor="start">+0.35</text><rect x="300" y="164" width="110" height="16" fill="#2a9d8f" rx="2"/><text x="8" y="177" font-size="12" fill="#333">f0_final_minus_spkmed</text><text x="414" y="177" font-size="11" fill="#666" text-anchor="start">+0.32</text><rect x="199" y="186" width="101" height="16" fill="#c98b3a" rx="2"/><text x="8" y="199" font-size="12" fill="#333">e_final_minus_spkmax ★</text><text x="195" y="199" font-size="11" fill="#666" text-anchor="end">-0.30</text><rect x="203" y="208" width="97" height="16" fill="#c98b3a" rx="2"/><text x="8" y="221" font-size="12" fill="#333">voiced_frac_tail</text><text x="199" y="221" font-size="11" fill="#666" text-anchor="end">-0.29</text><rect x="220" y="230" width="80" height="16" fill="#c98b3a" rx="2"/><text x="8" y="243" font-size="12" fill="#333">e_std</text><text x="216" y="243" font-size="11" fill="#666" text-anchor="end">-0.24</text><rect x="225" y="252" width="75" height="16" fill="#c98b3a" rx="2"/><text x="8" y="265" font-size="12" fill="#333">f0_range</text><text x="221" y="265" font-size="11" fill="#666" text-anchor="end">-0.22</text><rect x="300" y="274" width="75" height="16" fill="#2a9d8f" rx="2"/><text x="8" y="287" font-size="12" fill="#333">n_voiced_segments ★</text><text x="379" y="287" font-size="11" fill="#666" text-anchor="start">+0.22</text><rect x="236" y="296" width="64" height="16" fill="#c98b3a" rx="2"/><text x="8" y="309" font-size="12" fill="#333">f0_slope_tail</text><text x="232" y="309" font-size="11" fill="#666" text-anchor="end">-0.19</text></svg></div>
+<p>The two strongest signals are both human-driven: <code>f0_final_pctl</code> (final pitch at the
+<i>bottom of the speaker's range</i> &rArr; finished, even on a flat number) and
+<code>voiced_seg_dur_std</code> (steady digit-reading rhythm), plus energy <b>fade-to-floor</b>.</p>
+
+<h2>How we got here (RUNLOG in brief)</h2>
+<ol>
+<li><b>v1</b> generic turn-final prosody + HistGB &rarr; AUC 0.66, but overfit (in-sample AUC 1.0).</li>
+<li><b>Listened to the 12 worst errors</b> &rarr; the misses were English turn-ends on <b>numbers/addresses</b>
+that end <i>flat</i> (no pitch fall); "abruptness" appeared in both classes. Added pitch
+<b>declination-to-floor</b>, energy fade, list/number rhythm &rarr; linear AUC 0.62&rarr;0.66.</li>
+<li><b>Model bake-off</b> &rarr; dropped the overfit booster for the LR + bagged-GBM ensemble (AUC 0.686).</li>
+<li><b>Listened to the worst Hindi errors (native speaker)</b> &rarr; ends <b>fade out</b>
+(<i>"shukriya", "karlunga"</i>), dangerous holds <b>cut abruptly</b> mid-dictation
+(<i>"panch&hellip; likh lijiye"</i>); one "hold" was a silent click scored 0.88. Added fade-vs-cut +
+a silence guard &rarr; English 1232&rarr;1209 ms.</li>
+<li><b>Hindi ceiling confirmed</b>: verb-final Hindi ends on a short auxiliary whose identity is
+<i>lexical</i>, plus genuine label noise (holds a native speaker hears as finished). Acoustics + the
+&le;5% budget cannot go below 850 ms here.</li>
+</ol>
+
+<h2>Human vs coding agent (honest split)</h2>
+<div class="card">
+<b>Coding agent (Claude Code):</b> all code (features, training, <code>predict.py</code>, the
+error-dump &amp; summary tools), every run, the model bake-off, and the coefficient analysis.<br><br>
+<b>Human (candidate):</b> listened to the worst error clips in <b>both English and native Hindi</b> and
+identified (a) the flat number/address endings, (b) fade-out vs abrupt-cut, and (c) the silent-click
+data artifact — the insights that produced the top-weighted features and turned generic-prosody v1
+(AUC 0.66) into the final model. Also decided to trust the robust Hindi 850 ms over a lucky single-seed
+808 ms, and to keep pooled training after validating it helps Hindi.
+</div>
+
+<h2>Why it beats the status quo</h2>
+<p>The silence-only endpointer waits a fixed timer (1600 ms English). By scoring end-of-turn from
+prosody it reaches the true end ~24% faster on English at the same 5% interruption budget, and it does
+so <b>causally</b> (features only from audio before the pause) so it is deployable in a live agent. The
+honest limits — Hindi's lexical/verb-final ceiling and dataset label noise — are documented rather than
+hidden, with a concrete next step (a causal frame-level sequence model + a from-scratch final-syllable
+cue) in <code>NOTES.md</code>.</p>
+</body></html>
