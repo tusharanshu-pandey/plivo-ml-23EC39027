@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--n", type=int, default=12, help="clips per error type")
     ap.add_argument("--clip_s", type=float, default=4.0)
     ap.add_argument("--out_dir", default="scratch/errors")
+    ap.add_argument("--only_lang", default=None, help="restrict shown clips to this language")
     args = ap.parse_args()
 
     X, y, groups, langs, keys, dir_of = build_dataset(args.data_dirs)
@@ -61,8 +62,9 @@ def main():
                          pause_start=ps, pause_end=pe, dur=pe - ps,
                          data_dir=d, audio_file=af))
 
-    false_cut = sorted([r for r in rows if r["label"] == "hold"], key=lambda r: -r["p"])[:args.n]
-    misses = sorted([r for r in rows if r["label"] == "eot"], key=lambda r: r["p"])[:args.n]
+    pool = [r for r in rows if (args.only_lang is None or r["lang"] == args.only_lang)]
+    false_cut = sorted([r for r in pool if r["label"] == "hold"], key=lambda r: -r["p"])[:args.n]
+    misses = sorted([r for r in pool if r["label"] == "eot"], key=lambda r: r["p"])[:args.n]
 
     os.makedirs(args.out_dir, exist_ok=True)
     table = []
